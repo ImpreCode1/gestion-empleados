@@ -10,6 +10,7 @@ class Empleado(Base):
     nombre_completo = Column(String(255), nullable=False)
     departamento = Column(String(150), nullable=False)
     cargo = Column(String(150), nullable=False)
+    nombre_cargo = Column(String(150), nullable=True)
     fecha_contratacion = Column(Date, nullable=False)
     genero = Column(String(1), nullable=True)
     celular = Column(String(20), nullable=True)
