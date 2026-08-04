@@ -35,6 +35,7 @@ class EmpleadoOut(EmpleadoBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    foto_path: str | None = None
     created_at: datetime
 
 
