@@ -1,9 +1,15 @@
+from io import BytesIO
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
+from PIL import Image
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.excel_import import import_dataframe, read_dataframe, validate_columns
+from app.firma_generator import generar_firma
 from app.models import Empleado
 from app.schemas import (
     EmpleadoCreate,
@@ -14,6 +20,21 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/empleados", tags=["empleados"])
+
+MEDIA_ROOT = Path("media") / "fotos_empleados"
+FOTO_HW_RATIO = (0.749 - 0.157) * 505 / ((0.327 - 0.118) * 1333)
+
+
+def _center_crop(img: Image.Image, hw_ratio: float) -> Image.Image:
+    w, h = img.size
+    target_w = h / hw_ratio
+    target_h = h
+    if target_w > w:
+        target_w = w
+        target_h = w * hw_ratio
+    left = int((w - target_w) // 2)
+    top = int((h - target_h) // 2)
+    return img.crop((left, top, int(left + target_w), int(top + target_h)))
 
 
 @router.get("", response_model=PaginatedEmpleados)
@@ -126,3 +147,45 @@ async def importar_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Faltan columnas: {', '.join(missing)}")
 
     return import_dataframe(df)
+
+
+@router.post("/{empleado_id}/foto", response_model=EmpleadoOut)
+async def subir_foto(empleado_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    empleado = db.get(Empleado, empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
+
+    ext = (file.filename or "").lower().rsplit(".", 1)[-1] if "." in (file.filename or "") else ""
+    if ext not in {"jpg", "jpeg", "png"}:
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen (.jpg, .jpeg o .png)")
+
+    try:
+        data = await file.read()
+        img = Image.open(BytesIO(data))
+        img = img.convert("RGB")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo leer la imagen: {exc}")
+
+    img = _center_crop(img, FOTO_HW_RATIO)
+
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+    dest = MEDIA_ROOT / f"{empleado_id}.jpg"
+    img.save(dest, "JPEG", quality=90)
+
+    empleado.foto_path = str(dest).replace("\\", "/")
+    db.commit()
+    db.refresh(empleado)
+    return empleado
+
+
+@router.get("/{empleado_id}/firma")
+def get_firma(empleado_id: int, db: Session = Depends(get_db)):
+    empleado = db.get(Empleado, empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empleado no encontrado")
+
+    img = generar_firma(empleado)
+    buf = BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type="image/jpeg")

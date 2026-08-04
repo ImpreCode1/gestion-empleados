@@ -17,4 +17,5 @@ class Empleado(Base):
     fecha_nacimiento = Column(Date, nullable=False)
     correo = Column(String(255), unique=True, nullable=False)
     hydra_user_id = Column(String(255), nullable=True)
+    foto_path = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
