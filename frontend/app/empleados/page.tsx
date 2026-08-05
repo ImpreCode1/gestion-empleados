@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Table } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
+import { FirmaManager } from "@/components/empleados/FirmaManager";
 
 const PAGE_SIZE = 15;
 
@@ -170,6 +171,7 @@ export default function EmpleadosPage() {
                 header: "Acciones",
                 render: (row: Empleado) => (
                   <div className="flex gap-2">
+                    <FirmaManager empleado={row} />
                     <Link
                       href={`/empleados/${row.id}/editar`}
                       className="text-xs font-semibold px-2.5 py-1 rounded transition"

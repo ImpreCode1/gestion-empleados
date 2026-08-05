@@ -3,13 +3,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.excel_import import import_dataframe, read_dataframe, validate_columns
-from app.firma_generator import generar_firma
+from app.firma_generator import generar_firma, get_foto_box_size
 from app.models import Empleado
 from app.schemas import (
     EmpleadoCreate,
@@ -22,19 +22,13 @@ from app.schemas import (
 router = APIRouter(prefix="/api/v1/empleados", tags=["empleados"])
 
 MEDIA_ROOT = Path("media") / "fotos_empleados"
-FOTO_HW_RATIO = (0.749 - 0.157) * 505 / ((0.327 - 0.118) * 1333)
 
 
-def _center_crop(img: Image.Image, hw_ratio: float) -> Image.Image:
-    w, h = img.size
-    target_w = h / hw_ratio
-    target_h = h
-    if target_w > w:
-        target_w = w
-        target_h = w * hw_ratio
-    left = int((w - target_w) // 2)
-    top = int((h - target_h) // 2)
-    return img.crop((left, top, int(left + target_w), int(top + target_h)))
+def _center_crop_foto(img: Image.Image) -> Image.Image:
+    box_w, box_h = get_foto_box_size()
+    return ImageOps.fit(
+        img, (box_w, box_h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
+    )
 
 
 @router.get("", response_model=PaginatedEmpleados)
@@ -162,15 +156,23 @@ async def subir_foto(empleado_id: int, file: UploadFile = File(...), db: Session
     try:
         data = await file.read()
         img = Image.open(BytesIO(data))
-        img = img.convert("RGB")
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"No se pudo leer la imagen: {exc}")
 
-    img = _center_crop(img, FOTO_HW_RATIO)
+    img = _center_crop_foto(img)
 
     MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-    dest = MEDIA_ROOT / f"{empleado_id}.jpg"
-    img.save(dest, "JPEG", quality=90)
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        ext = "png"
+        img = img.convert("RGBA")
+    else:
+        ext = "jpg"
+        img = img.convert("RGB")
+    dest = MEDIA_ROOT / f"{empleado_id}.{ext}"
+    if ext == "png":
+        img.save(dest, "PNG")
+    else:
+        img.save(dest, "JPEG", quality=90)
 
     empleado.foto_path = str(dest).replace("\\", "/")
     db.commit()

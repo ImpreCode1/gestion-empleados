@@ -9,6 +9,7 @@ export interface Empleado {
   fecha_nacimiento: string;
   correo: string;
   hydra_user_id: string | null;
+  foto_path: string | null;
   created_at: string;
 }
 

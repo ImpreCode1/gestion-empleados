@@ -1,5 +1,7 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export { BASE_URL };
+
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -44,6 +46,20 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   upload: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: "POST", body: formData }),
+  download: async (path: string): Promise<Blob> => {
+    const res = await fetch(`${BASE_URL}${path}`);
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        // use statusText fallback
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.blob();
+  },
 };
 
 export function formatFecha(iso: string | null | undefined): string {

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = BASE_DIR / "assets" / "Firma Digital" / "plantillafirma.PNG"
@@ -65,6 +65,14 @@ def _fit_font(
     return font
 
 
+def get_foto_box_size() -> tuple[int, int]:
+    with Image.open(TEMPLATE_PATH) as base:
+        W, H = base.size
+    w = int(FOTO_BOX[2] * W) - int(FOTO_BOX[0] * W)
+    h = int(FOTO_BOX[3] * H) - int(FOTO_BOX[1] * H)
+    return max(w, 1), max(h, 1)
+
+
 def generar_firma(empleado, debug: bool = False) -> Image.Image:
     if not TEMPLATE_PATH.exists():
         raise FileNotFoundError(f"No se encontro la plantilla: {TEMPLATE_PATH}")
@@ -108,11 +116,15 @@ def generar_firma(empleado, debug: bool = False) -> Image.Image:
     if getattr(empleado, "foto_path", None):
         foto_ruta = BASE_DIR / empleado.foto_path
         if foto_ruta.exists():
-            foto = Image.open(foto_ruta).convert("RGB")
-            box_w = foto_box[2] - foto_box[0]
-            box_h = foto_box[3] - foto_box[1]
-            foto = foto.resize((box_w, box_h), Image.Resampling.LANCZOS)
-            img.paste(foto, (foto_box[0], foto_box[1]))
+            foto = Image.open(foto_ruta)
+            box_w, box_h = get_foto_box_size()
+            foto = ImageOps.fit(
+                foto, (box_w, box_h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
+            )
+            if foto.mode == "RGBA":
+                img.paste(foto, (foto_box[0], foto_box[1]), foto.getchannel("A"))
+            else:
+                img.paste(foto, (foto_box[0], foto_box[1]))
         else:
             draw.rectangle(foto_box, fill=PLACEHOLDER_FOTO)
     else:
